@@ -1,26 +1,16 @@
 {
-  "name": "next-blog-app",
-  "version": "0.1.0",
+  "name": "recipe-ai",
   "private": true,
-  "scripts": {
-    "dev": "set PORT=3008 && next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint"
-  },
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": { "dev": "vite", "build": "vite build", "preview": "vite preview" },
   "dependencies": {
-    "axios": "^1.7.7",
-    "mongoose": "^8.7.2",
-    "next": "^15.0.1",
-    "react": "^18",
-    "react-dom": "^18",
-    "react-toastify": "^10.0.6",
-    "styled-components": "^6.1.13"
+    "firebase": "^10.14.1",
+    "framer-motion": "^11.11.1",
+    "lucide-react": "^0.454.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
   },
-  "devDependencies": {
-    "eslint": "^8",
-    "eslint-config-next": "14.2.15",
-    "postcss": "^8",
-    "tailwindcss": "^3.4.1"
-  }
+  "devDependencies": { "@vitejs/plugin-react": "^4.3.1", "vite": "^5.4.8" }
 }
