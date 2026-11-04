@@ -1,7 +1,17 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-const MODEL = "@cf/black-forest-labs/flux-1-schnell";
+// Default: FLUX.2 [klein] 9B, a fast distilled model that follows prompts much better than FLUX.1 schnell
+// and costs far less than FLUX.2 [dev]. FLUX.1 schnell is the fallback if klein fails or the quota is hit.
+// For the best quality (and a paid Workers plan) set CLOUDFLARE_IMAGE_MODEL=@cf/black-forest-labs/flux-2-dev.
+// Set CLOUDFLARE_IMAGE_FALLBACK_MODEL to "none" to disable the fallback.
+const DEFAULT_MODEL = "@cf/black-forest-labs/flux-2-klein-9b";
+const DEFAULT_FALLBACK_MODEL = "@cf/black-forest-labs/flux-1-schnell";
+const MODEL_PATTERN = /^@cf\/[\w.-]+\/[\w.-]+$/;
+const IMAGE_WIDTH = 1024;
+const IMAGE_HEIGHT = 768; // 4:3, matching the 720x540 cover the browser produces
+const PRIMARY_TIMEOUT_MS = 40_000;
+const FALLBACK_TIMEOUT_MS = 16_000;
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 8;
 const MAX_PROMPT_LENGTH = 2048;
@@ -69,6 +79,55 @@ function cloudflareErrorMessage(result, status) {
   return messages.join(" ") || result?.error?.message || `Cloudflare Workers AI returned HTTP ${status}.`;
 }
 
+function pickModel(value, fallbackValue) {
+  const candidate = (value || "").trim();
+  return MODEL_PATTERN.test(candidate) ? candidate : fallbackValue;
+}
+
+// FLUX.2 models on Workers AI take multipart/form-data even for text-only prompts.
+// klein is distilled with a fixed 4 steps, so `steps` is only sent to the full dev model.
+async function runModel({ accountId, apiToken, model, prompt, timeoutMs }) {
+  let body, headers = { Authorization: `Bearer ${apiToken}` }; // for multipart, fetch sets the boundary itself
+  if (/flux-1-schnell$/.test(model)) {
+    // FLUX.1 schnell takes JSON, not multipart.
+    body = JSON.stringify({ prompt, steps: 4 });
+    headers["Content-Type"] = "application/json";
+  } else {
+    body = new FormData();
+    body.append("prompt", prompt);
+    body.append("width", String(IMAGE_WIDTH));
+    body.append("height", String(IMAGE_HEIGHT));
+    if (/flux-2-dev$/.test(model)) body.append("steps", "28");
+  }
+
+  let upstream;
+  try {
+    upstream = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${model}`,
+      {
+        method: "POST",
+        headers,
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      },
+    );
+  } catch (error) {
+    const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
+    return { ok: false, status: 504, detail: timedOut ? "The image model took too long to respond. Please try again." : `Could not reach Cloudflare: ${error?.message || error}` };
+  }
+
+  const result = await upstream.json().catch(() => ({}));
+  if (!upstream.ok || result?.success === false) {
+    return { ok: false, status: upstream.status || 502, detail: cloudflareErrorMessage(result, upstream.status) };
+  }
+  const image = result?.result?.image || result?.image;
+  if (typeof image !== "string" || !image) {
+    console.error("Cloudflare returned no image data:", JSON.stringify(result).slice(0, 1000));
+    return { ok: false, status: 502, detail: "Cloudflare did not return an image. Please try again with a more specific food description." };
+  }
+  return { ok: true, image, model };
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     if (!checkOrigin(req, res)) return;
@@ -101,34 +160,27 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: `A valid image prompt of 1–${MAX_PROMPT_LENGTH} characters is required.` });
     }
 
-    const upstream = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${MODEL}`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiToken}`,
-        },
-        body: JSON.stringify({ prompt, steps: 4 }),
-      },
-    );
+    const primary = pickModel(process.env.CLOUDFLARE_IMAGE_MODEL, DEFAULT_MODEL);
+    const fallbackRaw = process.env.CLOUDFLARE_IMAGE_FALLBACK_MODEL;
+    const fallback = fallbackRaw?.trim().toLowerCase() === "none" ? "" : pickModel(fallbackRaw, DEFAULT_FALLBACK_MODEL);
 
-    const result = await upstream.json().catch(() => ({}));
-    const imageData = result?.result?.image || result?.image;
-    if (!upstream.ok || result?.success === false) {
-      const detail = cloudflareErrorMessage(result, upstream.status);
-      console.error("Cloudflare image generation failed:", upstream.status, detail);
-      const status = upstream.status === 429 ? 429 : upstream.status >= 500 ? 502 : upstream.status === 401 || upstream.status === 403 ? upstream.status : 400;
-      return res.status(status).json({ error: detail });
+    let outcome = await runModel({ accountId, apiToken, model: primary, prompt, timeoutMs: PRIMARY_TIMEOUT_MS });
+    if (!outcome.ok && fallback && fallback !== primary && outcome.status !== 401 && outcome.status !== 403) {
+      console.warn(`Primary image model ${primary} failed (${outcome.status}): ${outcome.detail}. Trying ${fallback}.`);
+      const second = await runModel({ accountId, apiToken, model: fallback, prompt, timeoutMs: FALLBACK_TIMEOUT_MS });
+      if (second.ok) outcome = second;
     }
 
-    if (typeof imageData !== "string" || !imageData) {
-      console.error("Cloudflare returned no image data:", JSON.stringify(result).slice(0, 1000));
-      return res.status(502).json({ error: "Cloudflare did not return an image. Please try again with a more specific food description." });
+    if (!outcome.ok) {
+      console.error("Cloudflare image generation failed:", outcome.status, outcome.detail);
+      const status = outcome.status === 429 ? 429 : outcome.status >= 500 ? 502 : outcome.status === 401 || outcome.status === 403 ? outcome.status : 400;
+      return res.status(status).json({ error: outcome.detail });
     }
+    const imageData = outcome.image;
 
-    // Workers AI FLUX.1 Schnell returns a Base64-encoded PNG.
-    return res.status(200).json({ image: { mimeType: "image/png", data: imageData } });
+    // Workers AI image models return the image as a Base64 string (PNG or JPEG); sniff the real type.
+    const mimeType = imageData.startsWith("/9j/") ? "image/jpeg" : "image/png";
+    return res.status(200).json({ image: { mimeType, data: imageData }, model: outcome.model });
   } catch (error) {
     console.error("Cover generation error:", error);
     const message = error?.message || "Unexpected image-generation error.";

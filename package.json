@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev:api": "node --env-file=.env.development.local local-api.js"
+    "dev:api": "node --env-file=.env.development.local local-api.js",
+    "landing:images": "node --env-file=.env.development.local scripts/generate-landing-images.mjs"
   },
   "dependencies": {
     "firebase": "^10.14.1",
