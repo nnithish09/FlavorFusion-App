@@ -1,16 +1,19 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
-const MODEL = "gemini-3.1-flash-image";
+const MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const WINDOW_MS = 10 * 60 * 1000;
 const MAX_REQUESTS_PER_WINDOW = 8;
+const MAX_PROMPT_LENGTH = 2048;
 const requestBuckets = new Map();
 
 function getAllowedOrigins() {
   const configured = (process.env.ALLOWED_ORIGINS || process.env.APP_ORIGIN || "")
     .split(",").map((value) => value.trim()).filter(Boolean);
   if (process.env.VERCEL_URL) configured.push(`https://${process.env.VERCEL_URL}`);
-  if (process.env.NODE_ENV !== "production") configured.push("http://localhost:5173", "http://localhost:3000");
+  if (process.env.NODE_ENV !== "production") {
+    configured.push("http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000");
+  }
   return new Set(configured.map((value) => value.replace(/\/$/, "")));
 }
 
@@ -18,7 +21,7 @@ function checkOrigin(req, res) {
   const origin = req.headers.origin;
   const allowed = getAllowedOrigins();
   if (!origin || !allowed.has(origin.replace(/\/$/, ""))) {
-    res.status(403).json({ error: "This website is not allowed to use the image-generation service. Check ALLOWED_ORIGINS in Vercel." });
+    res.status(403).json({ error: "This website is not allowed to use the image-generation service. Check ALLOWED_ORIGINS." });
     return false;
   }
   res.setHeader("Access-Control-Allow-Origin", origin);
@@ -43,7 +46,7 @@ function getAdminAuth() {
 
 function checkRateLimit(req, res, uid) {
   const forwarded = req.headers["x-forwarded-for"];
-  const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) || "unknown";
+  const ip = (Array.isArray(forwarded) ? forwarded[0] : forwarded?.split(",")[0]) || req.socket?.remoteAddress || "unknown";
   const key = `${uid}:${ip}`;
   const now = Date.now();
   const current = requestBuckets.get(key);
@@ -59,6 +62,13 @@ function checkRateLimit(req, res, uid) {
   return true;
 }
 
+function cloudflareErrorMessage(result, status) {
+  const messages = Array.isArray(result?.errors)
+    ? result.errors.map((item) => item?.message).filter(Boolean)
+    : [];
+  return messages.join(" ") || result?.error?.message || `Cloudflare Workers AI returned HTTP ${status}.`;
+}
+
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     if (!checkOrigin(req, res)) return;
@@ -70,8 +80,11 @@ export default async function handler(req, res) {
   }
   if (!checkOrigin(req, res)) return;
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: "Server configuration is missing GEMINI_API_KEY." });
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!accountId || !apiToken) {
+    return res.status(500).json({ error: "Server configuration is missing CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN." });
+  }
 
   try {
     const authorization = req.headers.authorization || "";
@@ -84,39 +97,38 @@ export default async function handler(req, res) {
 
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
-    if (!prompt || prompt.length > 6000) {
-      return res.status(400).json({ error: "A valid image prompt of 1–6000 characters is required." });
+    if (!prompt || prompt.length > MAX_PROMPT_LENGTH) {
+      return res.status(400).json({ error: `A valid image prompt of 1–${MAX_PROMPT_LENGTH} characters is required.` });
     }
 
-    const upstream = await fetch(`https://generativelanguage.googleapis.com/v1/models/${MODEL}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          responseModalities: ["IMAGE"],
+    const upstream = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/run/${MODEL}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiToken}`,
         },
-      }),
-    });
+        body: JSON.stringify({ prompt, steps: 4 }),
+      },
+    );
 
     const result = await upstream.json().catch(() => ({}));
-    if (!upstream.ok) {
-      const detail = result?.error?.message || `Gemini API returned HTTP ${upstream.status}.`;
-      console.error("Gemini image generation failed:", upstream.status, detail);
-      const status = upstream.status === 429 ? 429 : upstream.status >= 500 ? 502 : 400;
+    const imageData = result?.result?.image || result?.image;
+    if (!upstream.ok || result?.success === false) {
+      const detail = cloudflareErrorMessage(result, upstream.status);
+      console.error("Cloudflare image generation failed:", upstream.status, detail);
+      const status = upstream.status === 429 ? 429 : upstream.status >= 500 ? 502 : upstream.status === 401 || upstream.status === 403 ? upstream.status : 400;
       return res.status(status).json({ error: detail });
     }
 
-    const parts = result?.candidates?.flatMap((candidate) => candidate?.content?.parts || []) || [];
-    const imagePart = parts.find((part) => part.inlineData?.data || part.inline_data?.data);
-    const imageData = imagePart?.inlineData || imagePart?.inline_data;
-    if (!imageData?.data) {
-      const reason = result?.promptFeedback?.blockReason || result?.candidates?.[0]?.finishReason;
-      console.error("Gemini returned no image part:", reason || "unknown response", JSON.stringify(result).slice(0, 1200));
-      return res.status(502).json({ error: reason ? `Gemini did not generate an image (${reason}). Try a more specific food description.` : "Gemini returned no image. Please try again with a more specific food description." });
+    if (typeof imageData !== "string" || !imageData) {
+      console.error("Cloudflare returned no image data:", JSON.stringify(result).slice(0, 1000));
+      return res.status(502).json({ error: "Cloudflare did not return an image. Please try again with a more specific food description." });
     }
 
-    return res.status(200).json({ image: { mimeType: imageData.mimeType || imageData.mime_type || "image/png", data: imageData.data } });
+    // Workers AI FLUX.1 Schnell returns a Base64-encoded PNG.
+    return res.status(200).json({ image: { mimeType: "image/png", data: imageData } });
   } catch (error) {
     console.error("Cover generation error:", error);
     const message = error?.message || "Unexpected image-generation error.";

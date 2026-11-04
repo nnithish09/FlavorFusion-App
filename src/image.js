@@ -22,17 +22,37 @@ export async function writeImagePrompt({ title, cuisine, ingredients }) {
 function buildFoodPrompt({ title, cuisine, ingredients, description }) {
   const dish = String(title || "").trim();
   if (!dish) throw new Error("A recipe title is required to generate its cover image.");
-  const items = (ingredients || []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 18);
-  const details = String(description || "").trim().slice(0, 1800);
-  return [
+  const items = (ingredients || []).map((x) => String(x || "").trim()).filter(Boolean).slice(0, 14);
+  const details = String(description || "").trim();
+  const core = [
     `Create one premium, photorealistic editorial food photograph of the exact finished dish: “${dish}”.`,
-    cuisine ? `Cuisine / culinary context: ${String(cuisine).slice(0, 100)}.` : "",
-    items.length ? `Recipe ingredients (show a plausible selection visibly in the finished dish; do not replace the main ingredients): ${items.join(", ")}.` : "",
-    details ? `Additional appearance guidance from the recipe author (use only when consistent with the exact dish and ingredient list): ${details}` : "",
-    `DISH FIDELITY IS THE HIGHEST PRIORITY: the food must unmistakably look like ${dish}, not a generic curry, rice bowl, stew, or unrelated dish. Respect the dish's customary preparation, shape, colour, texture, and serving style. Do not substitute ingredients or invent a different cuisine. If the dish is region-specific, depict its recognizable traditional form.`,
-    "Photograph the cooked, ready-to-eat food only, attractively plated in one appropriate real plate or bowl. Natural window light, appetizing but believable colour, crisp realistic food texture, subtle uncluttered tabletop, professional restaurant/editorial food photography, close 45-degree three-quarter view, shallow depth of field. Landscape 4:3 composition with the dish filling most of the frame.",
-    "One dish only. No text, typography, labels, logos, watermark, border, collage, split panel, people, hands, utensils covering the food, raw ingredient arrangement, illustration, painting, CGI, plastic-looking surfaces, or decorative objects unrelated to the recipe."
+    cuisine ? `Cuisine: ${String(cuisine).slice(0, 80)}.` : "",
+    items.length ? `Visible recipe ingredients: ${items.join(", ")}. Do not replace the main ingredients.` : "",
+    `DISH FIDELITY IS ESSENTIAL: unmistakably depict ${dish}, respecting its customary preparation, recognizable shape, colour, texture and serving style. Do not turn it into a generic curry, rice bowl or unrelated dish.`,
+    "Show one cooked, ready-to-eat serving in an appropriate real plate or bowl. Natural window light, appetizing believable colour, crisp realistic food texture, uncluttered tabletop, professional restaurant food photography, close 45-degree view, landscape composition.",
+    "One dish only. No text, labels, logos, watermark, collage, people, hands, illustration, painting, CGI or plastic-looking food."
+  ].filter(Boolean);
+  const detailLine = details ? `Author appearance guidance (only if consistent with the named dish): ${details}` : "";
+  let prompt = [...core.slice(0, 3), detailLine, ...core.slice(3)].filter(Boolean).join("\n\n");
+  if (prompt.length <= 2048) return prompt;
+
+  // Trim optional author prose first; preserve the recipe name, core food identity and photo direction.
+  const availableForDetails = Math.max(0, 2048 - (prompt.length - details.length));
+  const shortenedDetails = details.slice(0, Math.min(details.length, availableForDetails));
+  prompt = [...core.slice(0, 3), shortenedDetails ? `Author guidance: ${shortenedDetails}` : "", ...core.slice(3)].filter(Boolean).join("\n\n");
+  if (prompt.length <= 2048) return prompt;
+
+  // If still too long, reduce ingredient detail while keeping the exact dish and photography constraints.
+  const compactIngredients = items.join(", ").slice(0, 300);
+  const compactCore = [
+    `Photorealistic editorial food photograph of the exact finished dish: “${dish}”.`,
+    cuisine ? `Cuisine: ${String(cuisine).slice(0, 60)}.` : "",
+    compactIngredients ? `Ingredients: ${compactIngredients}.` : "",
+    `It must unmistakably look like ${dish}, with its customary preparation, shape, colour, texture and serving style; never substitute the dish.`,
+    "One cooked serving, appropriately plated. Natural window light, realistic appetizing food texture, uncluttered tabletop, professional restaurant photography, close 45-degree landscape composition.",
+    "One dish only; no text, watermark, collage, people, hands, illustration or CGI."
   ].filter(Boolean).join("\n\n");
+  return compactCore.slice(0, 2048);
 }
 
 async function toJpeg(data, mimeType, width = 720, height = 540) {
@@ -73,7 +93,7 @@ export async function generateCover({ title, cuisine, ingredients, description }
     throw new Error(message);
   }
   if (!payload.image?.data || !payload.image?.mimeType) {
-    throw new Error("Gemini returned a response without an image. Please try again.");
+    throw new Error("The image provider returned no image. Please try again.");
   }
   return toJpeg(payload.image.data, payload.image.mimeType);
 }
