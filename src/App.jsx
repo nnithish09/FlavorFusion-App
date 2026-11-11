@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Component, useEffect, useState } from "react";
 import { Routes, Route, NavLink, Navigate, Link, useLocation } from "react-router-dom";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { AnimatePresence, motion } from "framer-motion";
@@ -12,6 +12,29 @@ import MyBlogs from "./pages/MyBlogs.jsx";
 import Editor from "./pages/Editor.jsx";
 import Landing from "./pages/Landing.jsx";
 import Login from "./pages/Login.jsx";
+
+
+// Catches render errors so one bad page shows a message instead of a blank white screen.
+class Boundary extends Component {
+  state = { err: null };
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err, info) { console.error("Render error:", err, info?.componentStack); }
+  render() {
+    if (!this.state.err) return this.props.children;
+    return (
+      <div className="page">
+        <div className="panel">
+          <h3>This page hit a problem</h3>
+          <p className="hint">{String(this.state.err?.message || this.state.err)}</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn" onClick={() => this.setState({ err: null })}>Try again</button>
+            <button className="btn line" onClick={() => { Object.keys(localStorage).filter((k) => k.startsWith("lastChat")).forEach((k) => localStorage.removeItem(k)); window.location.assign("/"); }}>Start a new chat</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
 
 const links = [["/", "Cook", ChefHat], ["/explore", "Explore", Compass], ["/saved", "Saved", Bookmark], ["/my-blogs", "My blogs", PenLine]];
 
@@ -40,7 +63,7 @@ function Shell({ user }) {
       </header>
       <AnimatePresence mode="wait">
         <motion.div key={loc.pathname} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
-          <Routes location={loc}>
+          <Boundary key={loc.pathname}><Routes location={loc}>
             <Route path="/" element={<Chat user={user} />} />
             <Route path="/explore" element={<Blogs user={user} />} />
             <Route path="/saved" element={<Blogs user={user} saved />} />
@@ -53,7 +76,7 @@ function Shell({ user }) {
             <Route path="/welcome" element={<Landing user={user} />} />
             <Route path="/blogs" element={<Navigate to="/explore" />} />
             <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+          </Routes></Boundary>
         </motion.div>
       </AnimatePresence>
       <Toaster />

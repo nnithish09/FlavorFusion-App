@@ -1,12 +1,20 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ArrowLeft, Clock, Flame, Leaf, Eye, EyeOff } from "lucide-react";
+import { ArrowLeft, Clock, Eye, EyeOff } from "lucide-react";
 import { auth, google } from "../firebase";
 import "./login.css";
 
-const pantry = ["Spinach", "Paneer", "Tomato", "Garlic"];
+// Illustrative sample dishes for the hero (photos live in /public/landing, same as the landing page).
+const TABLE = [
+  { f: "chingri-malai", n: "Chingri malai curry", c: "Bengali", t: "40 min", k: 360, p: ["prawns", "coconut milk", "onion", "ginger", "garam masala"] },
+  { f: "palak-paneer", n: "Palak paneer", c: "North Indian", t: "30 min", k: 410, p: ["spinach", "paneer", "tomato", "garlic", "cream"] },
+  { f: "biryani", n: "Hyderabadi biryani", c: "Hyderabadi", t: "1 hr 30", k: 520, p: ["basmati", "chicken", "yoghurt", "saffron", "fried onion"] },
+  { f: "paella", n: "Paella Valenciana", c: "Spanish", t: "1 hr", k: 480, p: ["bomba rice", "saffron", "prawns", "green beans", "lemon"] },
+  { f: "poha", n: "Kanda poha", c: "Maharashtrian", t: "20 min", k: 290, p: ["flattened rice", "peanuts", "onion", "curry leaves", "lemon"] },
+  { f: "mole-poblano", n: "Mole poblano", c: "Mexican", t: "2 hr", k: 540, p: ["chicken", "dried chillies", "dark chocolate", "sesame", "tortillas"] },
+];
 
 const friendly = (e) => {
   switch (e.code) {
@@ -41,6 +49,34 @@ const GoogleG = () => (
   </svg>
 );
 
+// A round photo "plate". Swapping the dish crossfades and settles the photo.
+function Plate({ dish, className, delay, reduce }) {
+  return (
+    <motion.div
+      className={"lgn-plate " + className}
+      initial={reduce ? false : { opacity: 0, scale: 0.86 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay, duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <div className="lgn-photo">
+        <AnimatePresence initial={false}>
+          <motion.img
+            key={dish.f}
+            className="lgn-img"
+            src={`/landing/${dish.f}.png`}
+            alt=""
+            initial={{ opacity: 0, scale: 1.1 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
+          />
+        </AnimatePresence>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function Login() {
   const [params] = useSearchParams();
   const reduce = useReducedMotion();
@@ -51,7 +87,24 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  const [i, setI] = useState(0);
   const up = mode === "up";
+
+  // The table turns: each dish moves one place along every few seconds.
+  useEffect(() => {
+    if (reduce) return;
+    const t = setInterval(() => setI((n) => (n + 1) % TABLE.length), 6000);
+    return () => clearInterval(t);
+  }, [reduce]);
+
+  // Warm the cache so swaps never flash an empty plate.
+  useEffect(() => {
+    TABLE.forEach((d) => { const im = new Image(); im.src = `/landing/${d.f}.png`; });
+  }, []);
+
+  const d = TABLE[i];
+  const a = TABLE[(i + 1) % TABLE.length];
+  const b = TABLE[(i + 2) % TABLE.length];
 
   const go = async (fn) => {
     setErr("");
@@ -76,44 +129,52 @@ export default function Login() {
     setErr("");
   };
 
-  const rise = (delay) =>
+  const pop = (delay) =>
     reduce
       ? {}
-      : { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0 }, transition: { delay, duration: 0.55, ease: [0.22, 1, 0.36, 1] } };
+      : { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, transition: { delay, duration: 0.45, ease: [0.22, 1, 0.36, 1] } };
 
   return (
     <div className="lgn">
       <aside className="lgn-hero">
-        <div className="lgn-hero-copy">
-          <h1>Cook what you have. Share what you make.</h1>
-          <p>An AI sous chef that learns your pantry and nutrition goals, then turns the recipe into a blog people can love and save.</p>
+        <div className="lgn-top-block">
+          <img className="lgn-hero-logo" src="/logo-white.png" alt="FlavorFusion.AI" />
+
+          <div className="lgn-hero-copy">
+            <h1>Cook what you have. Share what you make.</h1>
+            <p>An AI sous chef that learns your pantry and nutrition goals, then turns the recipe into a blog people can love and save.</p>
+          </div>
+
+          <div className="lgn-pantry" aria-hidden="true">
+            <span className="lgn-have">You have</span>
+            <div className="lgn-chips" key={d.f}>
+              {d.p.map((p, n) => (
+                <motion.span key={p} className="lgn-chip" {...pop(0.15 + n * 0.1)}>{p}</motion.span>
+              ))}
+            </div>
+            <motion.div className="lgn-cap" key={d.n + "-cap"} {...pop(0.15 + d.p.length * 0.1 + 0.1)}>
+              <b>{d.n}</b>
+              <span>{d.c}<i />{" "}<Clock size={12} />{d.t}<i />{d.k} kcal</span>
+            </motion.div>
+          </div>
         </div>
 
-        <div className="lgn-stage" aria-hidden="true">
-          <div className="lgn-chips">
-            {pantry.map((p, i) => (
-              <motion.span key={p} className="lgn-chip" {...rise(0.35 + i * 0.12)}>
-                {p}
-              </motion.span>
-            ))}
-          </div>
-          <motion.div className="lgn-recipe" {...rise(1.1)}>
-            <h3>Palak paneer</h3>
-            <div className="lgn-meta">
-              <span><Clock size={14} />30 min</span>
-              <span><Flame size={14} />410 kcal</span>
-              <span><Leaf size={14} />Vegetarian</span>
-            </div>
-            <div className="lgn-foot"><i />Published to Explore</div>
-          </motion.div>
+        <div className="lgn-table" aria-hidden="true">
+          <Plate dish={b} className="b" delay={0.5} reduce={reduce} />
+          <Plate dish={a} className="a" delay={0.35} reduce={reduce} />
+          <Plate dish={d} className="main" delay={0.15} reduce={reduce} />
         </div>
       </aside>
 
       <main className="lgn-side">
         <div className="lgn-card">
           <div className="lgn-top">
-            <img className="lgn-logo" src="/logo.png" alt="FlavorFusion.AI" />
+            <img className="lgn-logo-m" src="/logo.png" alt="FlavorFusion.AI" />
             <Link to="/" className="lgn-back"><ArrowLeft size={15} />Back to home</Link>
+          </div>
+
+          <div className="lgn-m-plates" aria-hidden="true">
+            {TABLE.slice(0, 3).map((x) => <img key={x.f} src={`/landing/${x.f}.png`} alt="" />)}
           </div>
 
           <h2>{up ? "Create your account" : "Welcome back"}</h2>
@@ -125,7 +186,7 @@ export default function Login() {
             <button type="button" aria-pressed={up} onClick={() => switchMode("up")}>Create account</button>
           </div>
 
-          <button type="button" className="lgn-google" disabled={busy} onClick={() => go(() => signInWithPopup(auth, google))}>
+          <button type="button" className="btn line lgn-google" disabled={busy} onClick={() => go(() => signInWithPopup(auth, google))}>
             <GoogleG />Continue with Google
           </button>
 
@@ -172,7 +233,7 @@ export default function Login() {
 
             {err && <p className="lgn-err" role="alert">{err}</p>}
 
-            <button type="submit" className="lgn-submit" disabled={busy || !email || !pw}>
+            <button type="submit" className="btn lgn-submit" disabled={busy || !email || !pw}>
               {busy && <span className="lgn-spin" />}
               {busy ? (up ? "Creating account…" : "Signing in…") : up ? "Create account" : "Sign in"}
             </button>
