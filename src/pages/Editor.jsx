@@ -85,7 +85,7 @@ export default function Editor({ user, kind }) {
     try {
       let p = b.thumbPrompt;
       if (rewrite || !p?.trim()) p = await writeImagePrompt({ title: b.title, cuisine: b.recipe.cuisine, ingredients: b.recipe.ingredients.map((x) => x.item) });
-      const img = await generateCover(p);
+      const img = await generateCover({ title: b.title, cuisine: b.recipe.cuisine, ingredients: b.recipe.ingredients.map((x) => x.item), description: p });
       setB((x) => ({ ...x, thumbPrompt: p, thumbnail: img }));
     } catch (e) { toast(e.message); }
     setCoverBusy(false);
@@ -105,10 +105,9 @@ export default function Editor({ user, kind }) {
     try {
       const d = clean();
       if (!d.thumbnail) {
-        try {
-          const p = d.thumbPrompt || await writeImagePrompt({ title: d.title, cuisine: d.recipe.cuisine, ingredients: d.recipe.ingredients.map((x) => x.item) });
-          d.thumbPrompt = p; d.thumbnail = await generateCover(p);
-        } catch (e) { console.warn(e); }
+        const p = d.thumbPrompt || await writeImagePrompt({ title: d.title, cuisine: d.recipe.cuisine, ingredients: d.recipe.ingredients.map((x) => x.item) });
+        d.thumbPrompt = p;
+        d.thumbnail = await generateCover({ title: d.title, cuisine: d.recipe.cuisine, ingredients: d.recipe.ingredients.map((x) => x.item), description: p });
       }
       if (kind === "post") {
         await updateDoc(doc(db, "blogs", id), { title: d.title, intro: d.intro, closing: d.closing, tags: d.tags, recipe: d.recipe, youtube: d.youtube, thumbnail: d.thumbnail, thumbPrompt: d.thumbPrompt || "", updatedAt: serverTimestamp() });

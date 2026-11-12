@@ -92,8 +92,8 @@ export function normIng(list) {
     if (typeof x === "string") return void out.push({ quantity: "", item: x, group: g });
     const nested = x.items || x.ingredients;
     if (Array.isArray(nested)) return nested.forEach((y) => one(y, x.group || x.name || x.title || g));
-    let item = String(x.item ?? x.name ?? x.ingredient ?? x.food ?? "").trim();
-    const quantity = String(x.quantity ?? x.amount ?? x.qty ?? x.measure ?? "").trim();
+    let item = txt(x.item ?? x.name ?? x.ingredient ?? x.food ?? "").trim();
+    const quantity = txt(x.quantity ?? x.amount ?? x.qty ?? x.measure ?? "").trim();
     if (!item && !quantity) item = Object.entries(x).filter(([k, v]) => typeof v === "string" && !["group", "note", "substitute"].includes(k)).map(([, v]) => v).join(" ");
     out.push({ ...x, quantity, item, group: x.group || g });
   };
@@ -105,7 +105,42 @@ export const normSteps = (r) => [].concat(unjson(r?.steps) || []).map((x) => {
   if (typeof x === "string") return { text: x };
   return { ...x, text: x.text ?? x.instruction ?? x.description ?? x.step ?? "", title: x.title ?? x.name ?? "", minutes: x.minutes ?? x.time ?? x.duration ?? "" };
 });
-export const normRecipe = (r) => ({ ...r, ingredients: normIng(r?.ingredients), steps: normSteps(r) });
+// Model output is not always the shape the prompt asks for (a tip can come back as an object, equipment as a
+// plain string, and so on). React cannot render an object, and one bad field blanks the whole page, so every
+// value is turned into plain text or a list of plain text here, before anything renders.
+export const txt = (v) => {
+  v = unjson(v);
+  if (v == null) return "";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (Array.isArray(v)) return v.map(txt).filter(Boolean).join(", ");
+  if (typeof v === "object") {
+    const k = v.text ?? v.name ?? v.title ?? v.item ?? v.description ?? v.value;
+    return k !== undefined ? txt(k) : Object.values(v).map(txt).filter(Boolean).join(" ");
+  }
+  return String(v);
+};
+const list = (v) => {
+  v = unjson(v);
+  if (v == null || v === "") return [];
+  if (typeof v === "string") v = v.split(/\n|;/);
+  else if (!Array.isArray(v)) v = typeof v === "object" ? Object.values(v) : [v];
+  return v.map(txt).map((x) => x.trim()).filter(Boolean);
+};
+export const normRecipe = (r) => {
+  r = r && typeof r === "object" ? r : {};
+  return {
+    ...r,
+    title: txt(r.title), description: txt(r.description), cuisine: txt(r.cuisine),
+    prepTime: txt(r.prepTime), cookTime: txt(r.cookTime), totalTime: txt(r.totalTime),
+    servings: r.servings ? txt(r.servings) : "", difficulty: txt(r.difficulty),
+    healthNote: txt(r.healthNote), storage: txt(r.storage),
+    equipment: list(r.equipment), tips: list(r.tips), pairings: list(r.pairings), variations: list(r.variations),
+    ingredients: normIng(r.ingredients).map((x) => ({ ...x, quantity: txt(x.quantity), item: txt(x.item), note: txt(x.note), substitute: txt(x.substitute), group: txt(x.group) })),
+    steps: normSteps(r).map((x) => ({ ...x, title: txt(x.title), text: txt(x.text), tip: txt(x.tip), minutes: txt(x.minutes) })),
+    nutrition: normNut(r).map((n) => ({ ...n, name: txt(n.name), amount: txt(n.amount) })),
+  };
+};
 const grams = (nut, re) => { const x = nut.find((n) => re.test(n.name)); return x ? parseFloat(String(x.amount).replace(/[^\d.]/g, "")) || 0 : 0; };
 
 function Spice({ level }) {
@@ -184,9 +219,10 @@ function Timeline({ steps }) {
   );
 }
 
-export function RecipeBody({ r }) {
+export function RecipeBody({ r: raw }) {
   const [done, setDone] = useState({}), [sdone, setSdone] = useState({});
-  const nut = normNut(r), steps = normSteps(r);
+  const r = normRecipe(raw);
+  const nut = r.nutrition, steps = r.steps;
   const groups = [];
   normIng(r.ingredients).forEach((x, i) => {
     const g = x.group || "Ingredients";
@@ -210,7 +246,7 @@ export function RecipeBody({ r }) {
       {r.healthNote && <p className="callout"><Target size={16} />{r.healthNote}</p>}
       {(donut || radar) && <div className="glance">{donut}{radar}</div>}
       {nut.length > 0 && <><h3 className="sec">Nutrition per serving</h3><Nutrition items={nut} /></>}
-      {r.equipment?.length > 0 && <><h3 className="sec">Equipment</h3><div className="tags">{r.equipment.map((x) => <span key={x} className="tag">{x}</span>)}</div></>}
+      {r.equipment?.length > 0 && <><h3 className="sec">Equipment</h3><div className="tags">{r.equipment.map((x, i) => <span key={i} className="tag">{x}</span>)}</div></>}
       {groups.length > 0 && (
         <>
           <h3 className="sec">Ingredients</h3>
@@ -249,7 +285,7 @@ export function RecipeBody({ r }) {
         </>
       )}
       {r.tips?.length > 0 && <><h3 className="sec">Chef tips</h3><ul className="tips">{r.tips.map((t, i) => <li key={i}>{t}</li>)}</ul></>}
-      {r.pairings?.length > 0 && <><h3 className="sec">Serve with</h3><div className="tags">{r.pairings.map((x) => <span key={x} className="tag hot">{x}</span>)}</div></>}
+      {r.pairings?.length > 0 && <><h3 className="sec">Serve with</h3><div className="tags">{r.pairings.map((x, i) => <span key={i} className="tag hot">{x}</span>)}</div></>}
       {r.variations?.length > 0 && <><h3 className="sec">Variations</h3><ul className="tips">{r.variations.map((t, i) => <li key={i}>{t}</li>)}</ul></>}
       {r.storage && <><h3 className="sec">Storage and reheating</h3><p className="prose sm">{r.storage}</p></>}
     </div>

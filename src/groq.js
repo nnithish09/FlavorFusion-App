@@ -18,18 +18,3 @@ export async function askJSON(system, user) {
   if (!r.ok) throw new Error(`Groq ${r.status}: ${await r.text()}`);
   return JSON.parse((await r.json()).choices[0].message.content);
 }
-
-// Groq hosts no image model, so thumbnails use Pollinations, driven by a Groq-written prompt.
-export function thumbUrl(prompt, seed = 1) {
-  const p = new URLSearchParams({
-    width: e.VITE_POLLINATIONS_WIDTH || "1024",
-    height: e.VITE_POLLINATIONS_HEIGHT || "768",
-    nologo: "true",
-    seed: String(seed),
-  });
-  if (e.VITE_POLLINATIONS_MODEL) p.set("model", e.VITE_POLLINATIONS_MODEL);
-  if (e.VITE_POLLINATIONS_REFERRER) p.set("referrer", e.VITE_POLLINATIONS_REFERRER);
-  if (e.VITE_POLLINATIONS_TOKEN) p.set("token", e.VITE_POLLINATIONS_TOKEN);
-  const base = e.VITE_POLLINATIONS_BASE_URL || "https://image.pollinations.ai/prompt";
-  return `${base}/${encodeURIComponent(prompt)}?${p}`;
-}

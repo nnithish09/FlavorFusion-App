@@ -66,7 +66,7 @@ export default function Chat({ user }) {
     const d = (await getDoc(doc(col, id))).data();
     if (!d) { localStorage.removeItem(lastKey); return; }
     idRef.current = id; localStorage.setItem(lastKey, id);
-    setS({ msgs: d.msgs, step: d.step, prefs: d.prefs || {}, dishes: d.dishes || [], recipe: d.recipe || null, base: d.base || null });
+    setS({ msgs: d.msgs, step: d.step, prefs: d.prefs || {}, dishes: d.dishes || [], recipe: d.recipe ? normRecipe(d.recipe) : null, base: d.base || null });
     if (d.base?.servings) setServ(parseInt(d.base.servings) || 2);
     setSel([]); setText(""); setMenu(false);
   }

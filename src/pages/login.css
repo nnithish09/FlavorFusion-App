@@ -1,0 +1,251 @@
+/* FlavorFusion login. Uses the project's tokens (--r50..--r700, --ink, --ink2, --line, --sh) and fonts
+   (Bricolage Grotesque for display, Manrope for text) from index.css / index.html.
+   Every selector is scoped under .lgn so nothing leaks into the landing page or the app. */
+
+.lgn {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  color: var(--ink);
+  font-family: Manrope, system-ui, sans-serif;
+}
+.lgn h1, .lgn h2, .lgn h3 {
+  font-family: "Bricolage Grotesque", Lexend, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+/* ---------- Left: a table of dishes ---------- */
+.lgn .lgn-hero {
+  --pad: clamp(32px, 5vw, 72px);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+  padding: var(--pad) var(--pad) 0;
+  background: linear-gradient(155deg, #d12f43 0%, #b2243a 48%, #7f1426 100%);
+  color: #fff;
+}
+/* warm light falling across the table, so the photos sit in a glow instead of flat red */
+.lgn .lgn-hero::before {
+  content: "";
+  position: absolute;
+  right: -18%;
+  bottom: -26%;
+  width: 90%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 176, 150, 0.38), rgba(255, 176, 150, 0) 100%);
+  pointer-events: none;
+}
+
+.lgn .lgn-top-block { position: relative; z-index: 3; }
+.lgn .lgn-hero-logo { height: 36px; width: auto; display: block; }
+
+.lgn .lgn-hero-copy { margin-top: clamp(20px, 4vh, 40px); }
+.lgn .lgn-hero h1 {
+  margin: 0 0 16px;
+  max-width: 13ch;
+  font-size: clamp(2.5rem, 4.6vw, 4.2rem);
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.lgn .lgn-hero p {
+  margin: 0;
+  max-width: 42ch;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.lgn .lgn-pantry { margin-top: clamp(20px, 3.5vh, 32px); display: grid; gap: 10px; justify-items: start; max-width: 460px; }
+.lgn .lgn-have { font-weight: 700; font-size: 0.85rem; color: var(--r200); }
+.lgn .lgn-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.lgn .lgn-chip {
+  padding: 7px 15px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.86rem;
+}
+.lgn .lgn-cap {
+  display: grid;
+  gap: 2px;
+  padding: 11px 16px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 18px 30px -20px rgba(60, 0, 10, 0.6);
+  color: var(--ink);
+}
+.lgn .lgn-cap b {
+  font: 700 1.1rem "Bricolage Grotesque", Lexend, sans-serif;
+  letter-spacing: -0.02em;
+}
+.lgn .lgn-cap span { display: flex; align-items: center; gap: 6px; color: var(--ink2); font-size: 0.82rem; font-weight: 600; }
+.lgn .lgn-cap i { width: 3px; height: 3px; border-radius: 50%; background: var(--r300); }
+
+/* the plates: one large, two satellites, bleeding off the corner */
+.lgn .lgn-table {
+  --m: clamp(240px, min(34vh, 26vw), 400px);
+  position: relative;
+  flex: none;
+  height: calc(var(--m) * 0.7);
+  margin: 0 calc(var(--pad) * -1) 0 0;
+}
+.lgn .lgn-plate { position: absolute; }
+.lgn .lgn-plate.main { z-index: 1; width: var(--m); height: var(--m); right: calc(var(--m) * -0.1); bottom: calc(var(--m) * -0.12); }
+.lgn .lgn-plate.a { z-index: 2; width: calc(var(--m) * 0.44); height: calc(var(--m) * 0.44); right: calc(var(--m) * 0.78); bottom: calc(var(--m) * 0.04); }
+.lgn .lgn-plate.b { z-index: 2; width: calc(var(--m) * 0.3); height: calc(var(--m) * 0.3); right: calc(var(--m) * 0.92); bottom: calc(var(--m) * 0.52); }
+
+/* thin rings behind the main plate, like the rim and shadow of a table setting */
+.lgn .lgn-plate.main::before,
+.lgn .lgn-plate.main::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+.lgn .lgn-plate.main::before { inset: -9%; }
+.lgn .lgn-plate.main::after  { inset: -22%; border-color: rgba(255, 255, 255, 0.11); }
+
+.lgn .lgn-photo {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 8px solid #fff;
+  background: var(--r100);
+  box-shadow: 0 36px 60px -30px rgba(50, 0, 8, 0.65);
+}
+.lgn .lgn-plate.a .lgn-photo, .lgn .lgn-plate.b .lgn-photo { border-width: 6px; box-shadow: 0 20px 36px -22px rgba(50, 0, 8, 0.6); }
+.lgn .lgn-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* ---------- Right: form ---------- */
+.lgn .lgn-side { display: grid; place-items: center; padding: clamp(24px, 4vw, 56px); }
+.lgn .lgn-card { width: min(400px, 100%); }
+
+.lgn .lgn-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 36px; }
+.lgn .lgn-logo-m { display: none; height: 30px; width: auto; }
+.lgn .lgn-back {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--ink2); font-size: 0.9rem; font-weight: 600; text-decoration: none;
+  transition: color 0.15s;
+}
+.lgn .lgn-back:hover { color: var(--r600); }
+
+.lgn .lgn-m-plates { display: none; margin-bottom: 20px; }
+.lgn .lgn-m-plates img {
+  width: 56px; height: 56px; object-fit: cover;
+  border-radius: 50%; border: 3px solid #fff;
+  box-shadow: 0 8px 16px -10px rgba(164, 30, 47, 0.5);
+  background: var(--r100);
+}
+.lgn .lgn-m-plates img + img { margin-left: -14px; }
+
+.lgn h2 { margin: 0 0 6px; font-size: 2.2rem; line-height: 1.08; }
+.lgn .lgn-hint { margin: 0 0 24px; color: var(--ink2); font-size: 0.98rem; }
+
+/* sign in / create account switch */
+.lgn .lgn-seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  margin-bottom: 16px;
+  background: var(--r50);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.lgn .lgn-seg button {
+  position: relative; z-index: 1;
+  height: 40px;
+  border: 0; background: transparent; cursor: pointer;
+  font: 700 0.9rem Manrope, sans-serif;
+  color: var(--ink2);
+  border-radius: 10px;
+  transition: color 0.2s;
+}
+.lgn .lgn-seg button[aria-pressed="true"] { color: var(--r700); }
+.lgn .lgn-seg-thumb {
+  position: absolute; top: 4px; bottom: 4px; left: 4px;
+  width: calc(50% - 4px);
+  background: #fff;
+  border: 1px solid var(--r100);
+  border-radius: 10px;
+  box-shadow: var(--sh);
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.lgn .lgn-seg[data-mode="up"] .lgn-seg-thumb { transform: translateX(100%); }
+
+.lgn .lgn-google { width: 100%; height: 50px; gap: 10px; font-size: 0.95rem; border-color: #ead9dc; }
+.lgn .lgn-google:hover:not(:disabled) { background: var(--r50); filter: none; transform: none; }
+
+.lgn .lgn-or { display: flex; align-items: center; gap: 12px; margin: 20px 0; color: var(--ink2); font-size: 0.82rem; }
+.lgn .lgn-or::before, .lgn .lgn-or::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+/* floating-label fields */
+.lgn .lgn-collapse { overflow: hidden; }
+.lgn .lgn-field { position: relative; margin-bottom: 12px; }
+.lgn .lgn-field input { height: 56px; padding: 22px 14px 6px; font: 500 1rem Manrope, sans-serif; }
+.lgn .lgn-field input { border-color: #ead9dc; }
+.lgn .lgn-field input:hover { border-color: var(--r300); }
+.lgn .lgn-field input:focus { border-color: var(--r400); box-shadow: 0 0 0 4px rgba(206, 14, 37, 0.14); }
+.lgn #lgn-pw { padding-right: 46px; }
+.lgn .lgn-field label {
+  position: absolute; left: 15px; top: 28px;
+  transform: translateY(-50%);
+  color: var(--ink2); font-size: 1rem; font-weight: 500;
+  pointer-events: none;
+  transition: top 0.15s, font-size 0.15s, color 0.15s;
+}
+.lgn .lgn-field input:focus + label,
+.lgn .lgn-field input:not(:placeholder-shown) + label { top: 17px; font-size: 0.74rem; font-weight: 700; }
+.lgn .lgn-field input:focus + label { color: var(--r600); }
+
+.lgn .lgn-eye {
+  position: absolute; right: 6px; top: 8px;
+  width: 40px; height: 40px;
+  display: grid; place-items: center;
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--ink2); border-radius: 10px;
+  transition: background 0.15s, color 0.15s;
+}
+.lgn .lgn-eye:hover { background: var(--r100); color: var(--r700); }
+
+.lgn .lgn-err {
+  margin: 4px 0 12px;
+  padding: 11px 14px;
+  background: var(--r50);
+  border: 1px solid var(--r200);
+  border-radius: 12px;
+  color: #b0091f;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.lgn .lgn-submit { width: 100%; height: 52px; margin-top: 8px; font-size: 1rem; }
+.lgn .lgn-spin {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4); border-top-color: #fff;
+  animation: lgn-rot 0.7s linear infinite;
+}
+@keyframes lgn-rot { to { transform: rotate(360deg); } }
+
+/* ---------- Small screens: the table shrinks to three plates above the form ---------- */
+@media (max-width: 900px) {
+  .lgn { grid-template-columns: 1fr; }
+  .lgn .lgn-hero { display: none; }
+  .lgn .lgn-side { align-items: start; padding-top: 24px; }
+  .lgn .lgn-logo-m { display: block; }
+  .lgn .lgn-m-plates { display: flex; }
+  .lgn .lgn-top { margin-bottom: 24px; }
+  .lgn h2 { font-size: 1.9rem; }
+}
